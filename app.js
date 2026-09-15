@@ -8,14 +8,27 @@ const keyOverlay = $('keyOverlay'), apiKeyEl = $('apiKey'), keyGo = $('keyGo');
 let apiKey = localStorage.getItem('ultron_api_key') || '';
 if (apiKey) keyOverlay.classList.add('hidden');
 
+let audioCtx = null;
+function unlockAudio(){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    // play a silent blip to fully unlock audio on mobile
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    g.gain.value=0; o.connect(g); g.connect(audioCtx.destination); o.start(0); o.stop(0.01);
+  }catch(e){}
+}
 keyGo.onclick = () => {
   const k = apiKeyEl.value.trim();
   if (!k) return;
+  unlockAudio();
   apiKey = k; localStorage.setItem('ultron_api_key', k);
   keyOverlay.classList.add('hidden');
   say('ai', 'Connected to ULTRON. Say something.', 'ULTRON');
   setStatus('IDLE');
 };
+document.body.addEventListener('touchend', unlockAudio, {once:false});
+document.body.addEventListener('click', unlockAudio, {once:false});
 
 function setStatus(t){ status_.textContent = t; }
 function say(who, text, tag){
@@ -26,10 +39,16 @@ function say(who, text, tag){
   log.appendChild(d); log.scrollTop = log.scrollHeight;
 }
 function playAudio(b64, mime){
+  if(!b64) return;
   try{
+    unlockAudio();
+    setStatus('SPEAKING');
     const a = new Audio('data:'+(mime||'audio/mpeg')+';base64,'+b64);
-    a.play().catch(()=>{});
-  }catch(e){}
+    a.onended = ()=> setStatus('IDLE');
+    a.onerror = ()=> setStatus('IDLE');
+    const p = a.play();
+    if (p && p.catch) p.catch(()=>{ setStatus('TAP TO HEAR'); });
+  }catch(e){ setStatus('IDLE'); }
 }
 
 async function askText(text){
